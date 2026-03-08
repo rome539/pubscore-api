@@ -1,0 +1,283 @@
+// server.js — PubScore Validation API
+import express from 'express';
+import cors from 'cors';
+import { nip19 } from 'nostr-tools';
+import { initDB, getReviewsForPubkey, getScoreForPubkey, getScoresForPubkeys, getTotalReviewCount, getDistinctReviewedCount, getLeaderboard, getLeaderboardSince, getPendingCount } from './db.js';
+import { startIngester, getIngesterStats } from './ingester.js';
+import { startFollowerChecker, getFollowerCheckerStats } from './follower-checker.js';
+
+const PORT = process.env.PORT || 3000;
+const app = express();
+
+// ---------------------------------------------------------------------------
+// Middleware
+// ---------------------------------------------------------------------------
+
+app.use(cors({
+  origin: '*',
+  methods: ['GET'],
+  maxAge: 86400
+}));
+
+app.use(express.json());
+
+// Simple rate limiter (per IP, in-memory)
+const rateLimiter = new Map();
+const RATE_LIMIT = 120;        // requests per window
+const RATE_WINDOW_MS = 60000;  // 1 minute
+
+function rateLimit(req, res, next) {
+  const ip = req.ip || req.socket.remoteAddress;
+  const now = Date.now();
+  const entry = rateLimiter.get(ip);
+
+  if (!entry || now - entry.start > RATE_WINDOW_MS) {
+    rateLimiter.set(ip, { start: now, count: 1 });
+    return next();
+  }
+
+  entry.count++;
+  if (entry.count > RATE_LIMIT) {
+    return res.status(429).json({ error: 'Rate limit exceeded. Try again shortly.' });
+  }
+  next();
+}
+
+app.use(rateLimit);
+
+// Clean up stale rate limit entries every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - RATE_WINDOW_MS * 2;
+  for (const [ip, entry] of rateLimiter) {
+    if (entry.start < cutoff) rateLimiter.delete(ip);
+  }
+}, 300000);
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Decode an npub to hex pubkey. Returns null if invalid. */
+function npubToHex(npub) {
+  try {
+    if (!npub || !npub.startsWith('npub1')) return null;
+    const { type, data } = nip19.decode(npub);
+    if (type !== 'npub') return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/** Convert hex pubkey to npub */
+function hexToNpub(hex) {
+  try {
+    return nip19.npubEncode(hex);
+  } catch {
+    return hex;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /reviews?npub={npub}
+ * Full reviews for a profile
+ */
+app.get('/reviews', (req, res) => {
+  const { npub } = req.query;
+  const pubkey = npubToHex(npub);
+  if (!pubkey) {
+    return res.status(400).json({ error: 'Invalid or missing npub parameter' });
+  }
+
+  const reviews = getReviewsForPubkey(pubkey);
+  const score = getScoreForPubkey(pubkey);
+
+  res.json({
+    npub,
+    avgRating: score.avgRating || 0,
+    count: score.count || 0,
+    reviews: reviews.map(r => ({
+      reviewer: hexToNpub(r.reviewer_pubkey),
+      reviewerHex: r.reviewer_pubkey,
+      rating: r.rating,
+      content: r.content,
+      categories: r.categories ? JSON.parse(r.categories) : [],
+      created_at: r.created_at
+    }))
+  });
+});
+
+/**
+ * GET /score?npub={npub}
+ * Lightweight score only
+ */
+app.get('/score', (req, res) => {
+  const { npub } = req.query;
+  const pubkey = npubToHex(npub);
+  if (!pubkey) {
+    return res.status(400).json({ error: 'Invalid or missing npub parameter' });
+  }
+
+  const score = getScoreForPubkey(pubkey);
+  res.json({
+    npub,
+    avgRating: score.avgRating || 0,
+    count: score.count || 0
+  });
+});
+
+/**
+ * GET /scores?npubs={npub1,npub2,...}
+ * Batch scores for Fren Finder
+ */
+app.get('/scores', (req, res) => {
+  const { npubs } = req.query;
+  if (!npubs) {
+    return res.status(400).json({ error: 'Missing npubs parameter' });
+  }
+
+  const npubList = npubs.split(',').map(s => s.trim()).filter(Boolean);
+
+  if (npubList.length > 200) {
+    return res.status(400).json({ error: 'Max 200 npubs per request' });
+  }
+
+  // Decode all to hex
+  const mapping = {}; // hex -> npub
+  const hexKeys = [];
+  const invalid = [];
+
+  for (const npub of npubList) {
+    const hex = npubToHex(npub);
+    if (hex) {
+      mapping[hex] = npub;
+      hexKeys.push(hex);
+    } else {
+      invalid.push(npub);
+    }
+  }
+
+  const hexScores = getScoresForPubkeys(hexKeys);
+
+  // Convert back to npub-keyed result
+  const scores = {};
+  for (const [hex, score] of Object.entries(hexScores)) {
+    const npub = mapping[hex] || hexToNpub(hex);
+    scores[npub] = score;
+  }
+
+  // Add zeros for invalid npubs too
+  for (const npub of invalid) {
+    scores[npub] = { avgRating: 0, count: 0 };
+  }
+
+  res.json({ scores });
+});
+
+/**
+ * GET /leaderboard?window={all|week|month}&limit={n}
+ * Top rated profiles for PubScore featured section
+ */
+app.get('/leaderboard', (req, res) => {
+  const { window: win = 'all', limit: limitStr = '50' } = req.query;
+  const limit = Math.min(Math.max(parseInt(limitStr, 10) || 50, 1), 1000);
+
+  let results;
+  if (win === '24h' || win === 'day') {
+    const since = Math.floor(Date.now() / 1000) - 86400;
+    results = getLeaderboardSince(since, 1, limit);
+  } else if (win === 'week') {
+    const since = Math.floor(Date.now() / 1000) - 7 * 86400;
+    results = getLeaderboardSince(since, 1, limit);
+  } else if (win === 'month') {
+    const since = Math.floor(Date.now() / 1000) - 30 * 86400;
+    results = getLeaderboardSince(since, 1, limit);
+  } else {
+    results = getLeaderboard(1, limit);
+  }
+
+  res.json({
+    window: win,
+    profiles: results.map(r => ({
+      npub: hexToNpub(r.pubkey),
+      pubkey: r.pubkey,
+      avgRating: r.avgRating,
+      count: r.count
+    }))
+  });
+});
+
+/**
+ * GET /health
+ * Health check + basic stats
+ */
+app.get('/health', (req, res) => {
+  const ingester = getIngesterStats();
+  const followerChecker = getFollowerCheckerStats();
+  res.json({
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    reviews: getTotalReviewCount(),
+    profiles: getDistinctReviewedCount(),
+    pending: getPendingCount(),
+    ingester,
+    followerChecker
+  });
+});
+
+/**
+ * GET /stats
+ * Public stats for dashboards
+ */
+app.get('/stats', (req, res) => {
+  res.json({
+    totalReviews: getTotalReviewCount(),
+    totalProfiles: getDistinctReviewedCount()
+  });
+});
+
+// 404 catch-all
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error('[Server] Error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// ---------------------------------------------------------------------------
+// Startup
+// ---------------------------------------------------------------------------
+
+async function main() {
+  console.log('[Server] Initializing database...');
+  initDB();
+
+  console.log('[Server] Starting ingester...');
+  await startIngester();
+
+  console.log('[Server] Starting follower checker...');
+  await startFollowerChecker();
+
+  app.listen(PORT, () => {
+    console.log(`[Server] PubScore API running on port ${PORT}`);
+    console.log(`[Server] Endpoints:`);
+    console.log(`  GET /reviews?npub=...`);
+    console.log(`  GET /score?npub=...`);
+    console.log(`  GET /scores?npubs=...,...`);
+    console.log(`  GET /leaderboard?window=all|week|month`);
+    console.log(`  GET /health`);
+    console.log(`  GET /stats`);
+  });
+}
+
+main().catch(err => {
+  console.error('[Server] Fatal error:', err);
+  process.exit(1);
+});
