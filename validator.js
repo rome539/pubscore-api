@@ -3,7 +3,7 @@ import { verifyEvent } from 'nostr-tools';
 import { countRecentReviewsByReviewer, getReviewerStats } from './db.js';
 
 const REVIEW_KIND = 38383;
-const MIN_REVIEWER_FOLLOWERS = 10;
+const MIN_REVIEWER_FOLLOWERS = 30;
 
 /**
  * Validate a Nostr review event.
