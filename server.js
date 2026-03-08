@@ -2,7 +2,7 @@
 import express from 'express';
 import cors from 'cors';
 import { nip19 } from 'nostr-tools';
-import { initDB, getReviewsForPubkey, getScoreForPubkey, getScoresForPubkeys, getTotalReviewCount, getDistinctReviewedCount, getLeaderboard, getLeaderboardSince, getPendingCount } from './db.js';
+import { initDB, getReviewsForPubkey, getScoreForPubkey, getScoresForPubkeys, getTotalReviewCount, getDistinctReviewedCount, getLeaderboard, getLeaderboardSince, getLeaderboardByTag, getLeaderboardByTagSince, getPendingCount } from './db.js';
 import { startIngester, getIngesterStats } from './ingester.js';
 import { startFollowerChecker, getFollowerCheckerStats } from './follower-checker.js';
 
@@ -78,6 +78,9 @@ function hexToNpub(hex) {
   }
 }
 
+// Valid tag keys
+const VALID_TAGS = ['trade', 'knowledge', 'helpful', 'funny', 'creative', 'warning'];
+
 // ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
@@ -146,8 +149,7 @@ app.get('/scores', (req, res) => {
     return res.status(400).json({ error: 'Max 200 npubs per request' });
   }
 
-  // Decode all to hex
-  const mapping = {}; // hex -> npub
+  const mapping = {};
   const hexKeys = [];
   const invalid = [];
 
@@ -163,14 +165,12 @@ app.get('/scores', (req, res) => {
 
   const hexScores = getScoresForPubkeys(hexKeys);
 
-  // Convert back to npub-keyed result
   const scores = {};
   for (const [hex, score] of Object.entries(hexScores)) {
     const npub = mapping[hex] || hexToNpub(hex);
     scores[npub] = score;
   }
 
-  // Add zeros for invalid npubs too
   for (const npub of invalid) {
     scores[npub] = { avgRating: 0, count: 0 };
   }
@@ -206,6 +206,42 @@ app.get('/leaderboard', (req, res) => {
       npub: hexToNpub(r.pubkey),
       pubkey: r.pubkey,
       avgRating: r.avgRating,
+      count: r.count
+    }))
+  });
+});
+
+/**
+ * GET /leaderboard/tag?tag={tag}&window={all|week|month}
+ * All profiles tagged with a specific category
+ */
+app.get('/leaderboard/tag', (req, res) => {
+  const { tag, window: win = 'all' } = req.query;
+
+  if (!tag || !VALID_TAGS.includes(tag)) {
+    return res.status(400).json({ error: `Invalid tag. Must be one of: ${VALID_TAGS.join(', ')}` });
+  }
+
+  let results;
+  if (win === '24h' || win === 'day') {
+    const since = Math.floor(Date.now() / 1000) - 86400;
+    results = getLeaderboardByTagSince(tag, since, 1, 1000);
+  } else if (win === 'week') {
+    const since = Math.floor(Date.now() / 1000) - 7 * 86400;
+    results = getLeaderboardByTagSince(tag, since, 1, 1000);
+  } else if (win === 'month') {
+    const since = Math.floor(Date.now() / 1000) - 30 * 86400;
+    results = getLeaderboardByTagSince(tag, since, 1, 1000);
+  } else {
+    results = getLeaderboardByTag(tag, 1, 1000);
+  }
+
+  res.json({
+    tag,
+    window: win,
+    profiles: results.map(r => ({
+      npub: hexToNpub(r.pubkey),
+      pubkey: r.pubkey,
       count: r.count
     }))
   });
@@ -272,6 +308,7 @@ async function main() {
     console.log(`  GET /score?npub=...`);
     console.log(`  GET /scores?npubs=...,...`);
     console.log(`  GET /leaderboard?window=all|week|month`);
+    console.log(`  GET /leaderboard/tag?tag=funny&window=all`);
     console.log(`  GET /health`);
     console.log(`  GET /stats`);
   });

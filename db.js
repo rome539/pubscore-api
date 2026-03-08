@@ -132,7 +132,6 @@ export function getScoreForPubkey(reviewedPubkey) {
 /** Get scores for multiple pubkeys at once */
 export function getScoresForPubkeys(pubkeys) {
   if (!pubkeys.length) return {};
-  // Use a temp approach since SQLite doesn't do array params well
   const placeholders = pubkeys.map(() => '?').join(',');
   const rows = getDB().prepare(`
     SELECT
@@ -317,4 +316,35 @@ export function getLeaderboardSince(sinceTs, minReviews = 1, limit = 50) {
     ORDER BY avgRating DESC, count DESC
     LIMIT ?
   `).all(sinceTs, minReviews, limit);
+}
+
+// ---------------------------------------------------------------------------
+// Tag Leaderboard
+// ---------------------------------------------------------------------------
+
+/** Get all profiles tagged with a specific category */
+export function getLeaderboardByTag(tag, minReviews = 1, limit = 1000) {
+  return getDB().prepare(`
+    SELECT reviewed_pubkey AS pubkey, COUNT(*) AS count
+    FROM reviews
+    WHERE categories LIKE ?
+    GROUP BY reviewed_pubkey
+    HAVING count >= ?
+    ORDER BY count DESC
+    LIMIT ?
+  `).all(`%"${tag}"%`, minReviews, limit);
+}
+
+/** Get tag leaderboard filtered by time window */
+export function getLeaderboardByTagSince(tag, sinceTs, minReviews = 1, limit = 1000) {
+  return getDB().prepare(`
+    SELECT reviewed_pubkey AS pubkey, COUNT(*) AS count
+    FROM reviews
+    WHERE categories LIKE ?
+    AND created_at >= ?
+    GROUP BY reviewed_pubkey
+    HAVING count >= ?
+    ORDER BY count DESC
+    LIMIT ?
+  `).all(`%"${tag}"%`, sinceTs, minReviews, limit);
 }
