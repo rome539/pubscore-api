@@ -2,7 +2,7 @@
 import 'websocket-polyfill';
 import { Relay } from 'nostr-tools/relay';
 import { validateReview } from './validator.js';
-import { upsertReviewsBatch, addPendingReview, getIngestionState, setIngestionState, getTotalReviewCount, getPendingCount } from './db.js';
+import { upsertReviewsBatch, addPendingReview, getIngestionState, setIngestionState, getTotalReviewCount, getPendingCount, getDB } from './db.js';
 
 const REVIEW_KIND = 38383;
 
@@ -15,12 +15,15 @@ const RELAYS = [
   'wss://relay.snort.social',
 ];
 
-// How far back to look on first run (30 days)
+// How far back to look on first run (90 days)
 const INITIAL_LOOKBACK = 90 * 24 * 60 * 60;
 // How often to flush the buffer to DB
 const FLUSH_INTERVAL_MS = 5000;
+// How often to run the authors backfill (every 6 hours)
+const BACKFILL_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 let buffer = [];
+let seenEventIds = new Set();
 let stats = { received: 0, valid: 0, invalid: 0, pending: 0, duplicates: 0 };
 let connectedRelays = [];
 
@@ -37,15 +40,25 @@ function flushBuffer() {
   }
 }
 
-/** Process a single incoming event */
+/** Process a single incoming event — deduplicated */
 function processEvent(event) {
+  if (seenEventIds.has(event.id)) {
+    stats.duplicates++;
+    return;
+  }
+  seenEventIds.add(event.id);
+  // Keep seen set from growing unbounded
+  if (seenEventIds.size > 50000) {
+    const arr = [...seenEventIds];
+    seenEventIds = new Set(arr.slice(arr.length - 25000));
+  }
+
   stats.received++;
   const result = validateReview(event);
   if (result.valid) {
     stats.valid++;
     buffer.push(result.review);
   } else if (result.pending) {
-    // No follower data yet — queue for later
     stats.pending++;
     try {
       addPendingReview(result.review);
@@ -101,6 +114,62 @@ async function connectToRelay(url, sinceTimestamp) {
   }
 }
 
+/** Get all known reviewer pubkeys from the DB */
+function getKnownReviewerPubkeys() {
+  try {
+    return getDB().prepare('SELECT DISTINCT reviewer_pubkey FROM reviews').all().map(r => r.reviewer_pubkey);
+  } catch (e) {
+    console.error('[Ingester] Failed to get reviewer pubkeys:', e.message);
+    return [];
+  }
+}
+
+/**
+ * Backfill pass — queries relays by authors filter for all known reviewers.
+ * This catches reviews that relays don't return via #p tag indexing.
+ */
+async function runAuthorsBackfill() {
+  const reviewers = getKnownReviewerPubkeys();
+  if (!reviewers.length) return;
+
+  console.log(`[Ingester] Starting authors backfill for ${reviewers.length} known reviewers...`);
+  const since = Math.floor(Date.now() / 1000) - INITIAL_LOOKBACK;
+  let found = 0;
+
+  // Batch into groups of 50 to avoid oversized filters
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < reviewers.length; i += BATCH_SIZE) {
+    const batch = reviewers.slice(i, i + BATCH_SIZE);
+
+    for (const url of RELAYS) {
+      let relay;
+      try {
+        relay = await Relay.connect(url);
+        await new Promise(res => {
+          relay.subscribe(
+            [{ kinds: [REVIEW_KIND], authors: batch, since }],
+            {
+              onevent(event) {
+                processEvent(event);
+                found++;
+              },
+              oneose() { res(); },
+            }
+          );
+          setTimeout(res, 8000);
+        });
+        relay.close();
+      } catch (e) {
+        if (relay) try { relay.close(); } catch {}
+      }
+    }
+  }
+
+  // Flush anything found
+  flushBuffer();
+  console.log(`[Ingester] Authors backfill complete. Found ${found} events.`);
+}
+
 /** Track the latest event timestamp for bookmarking */
 function updateBookmark() {
   if (buffer.length === 0) return;
@@ -131,7 +200,13 @@ export async function startIngester() {
     flushBuffer();
   }, FLUSH_INTERVAL_MS);
 
-  console.log('[Ingester] Running. Flush every 5s.');
+  // Run authors backfill on startup after a short delay, then every 6 hours
+  setTimeout(async () => {
+    await runAuthorsBackfill();
+    setInterval(runAuthorsBackfill, BACKFILL_INTERVAL_MS);
+  }, 30000);
+
+  console.log('[Ingester] Running. Flush every 5s. Authors backfill every 6h.');
 }
 
 /** Get ingester stats */
