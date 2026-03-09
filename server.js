@@ -23,7 +23,7 @@ app.use(express.json());
 
 // Watermark — applied to every response
 app.use((req, res, next) => {
-  res.setHeader('X-Powered-By', 'PubScore API — pubscore.space');
+  res.setHeader('X-Powered-By', 'PubScore API - pubscore.space');
   next();
 });
 
