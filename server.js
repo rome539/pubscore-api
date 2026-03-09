@@ -86,24 +86,48 @@ const VALID_TAGS = ['trade', 'knowledge', 'helpful', 'funny', 'creative', 'warni
 // ---------------------------------------------------------------------------
 
 /**
- * GET /reviews?npub={npub}
- * Full reviews for a profile
+ * GET /reviews?npub={npub}&limit={n}&before={cursor}
+ * Full reviews for a profile with cursor-based pagination
+ *
+ * Pagination:
+ *   - Default 50 reviews per request, max 200
+ *   - Pass `before` from the previous response's `nextCursor` to get the next page
+ *   - `hasMore: true` means there are more reviews to fetch
+ *   - `hasMore: false` means you've reached the end
+ *
+ * Example:
+ *   GET /reviews?npub=npub1...              → first 50 reviews
+ *   GET /reviews?npub=npub1...&before=1741200000  → next 50 reviews
  */
 app.get('/reviews', (req, res) => {
-  const { npub } = req.query;
+  const { npub, limit: limitStr = '50', before: beforeStr } = req.query;
   const pubkey = npubToHex(npub);
   if (!pubkey) {
     return res.status(400).json({ error: 'Invalid or missing npub parameter' });
   }
 
-  const reviews = getReviewsForPubkey(pubkey);
+  const limit = Math.min(Math.max(parseInt(limitStr, 10) || 50, 1), 200);
+  const before = beforeStr ? parseInt(beforeStr, 10) : null;
+
+  if (beforeStr && isNaN(before)) {
+    return res.status(400).json({ error: 'Invalid before cursor — must be a Unix timestamp' });
+  }
+
+  const reviews = getReviewsForPubkey(pubkey, limit + 1, before);
+  const hasMore = reviews.length > limit;
+  const page = hasMore ? reviews.slice(0, limit) : reviews;
+  const nextCursor = hasMore ? page[page.length - 1].created_at : null;
+
   const score = getScoreForPubkey(pubkey);
 
   res.json({
     npub,
     avgRating: score.avgRating || 0,
     count: score.count || 0,
-    reviews: reviews.map(r => ({
+    limit,
+    hasMore,
+    nextCursor,
+    reviews: page.map(r => ({
       reviewer: hexToNpub(r.reviewer_pubkey),
       reviewerHex: r.reviewer_pubkey,
       rating: r.rating,
@@ -305,6 +329,7 @@ async function main() {
     console.log(`[Server] PubScore API running on port ${PORT}`);
     console.log(`[Server] Endpoints:`);
     console.log(`  GET /reviews?npub=...`);
+    console.log(`  GET /reviews?npub=...&limit=50&before={cursor}`);
     console.log(`  GET /score?npub=...`);
     console.log(`  GET /scores?npubs=...,...`);
     console.log(`  GET /leaderboard?window=all|week|month`);

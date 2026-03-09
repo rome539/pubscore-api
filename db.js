@@ -108,14 +108,24 @@ export function upsertReviewsBatch(reviews) {
   tx(reviews);
 }
 
-/** Get all reviews for a reviewed pubkey, ordered newest first */
-export function getReviewsForPubkey(reviewedPubkey) {
+/** Get reviews for a reviewed pubkey, ordered newest first with cursor-based pagination */
+export function getReviewsForPubkey(reviewedPubkey, limit = 50, before = null) {
+  if (before) {
+    return getDB().prepare(`
+      SELECT id, reviewer_pubkey, reviewed_pubkey, rating, content, categories, created_at
+      FROM reviews
+      WHERE reviewed_pubkey = ? AND created_at < ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(reviewedPubkey, before, limit);
+  }
   return getDB().prepare(`
     SELECT id, reviewer_pubkey, reviewed_pubkey, rating, content, categories, created_at
     FROM reviews
     WHERE reviewed_pubkey = ?
     ORDER BY created_at DESC
-  `).all(reviewedPubkey);
+    LIMIT ?
+  `).all(reviewedPubkey, limit);
 }
 
 /** Get score summary for a reviewed pubkey */
