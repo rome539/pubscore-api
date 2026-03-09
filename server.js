@@ -21,6 +21,12 @@ app.use(cors({
 
 app.use(express.json());
 
+// Watermark — applied to every response
+app.use((req, res, next) => {
+  res.setHeader('X-Powered-By', 'PubScore API — pubscore.space');
+  next();
+});
+
 // Simple rate limiter (per IP, in-memory)
 const rateLimiter = new Map();
 const RATE_LIMIT = 120;        // requests per window
