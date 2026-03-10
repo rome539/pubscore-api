@@ -94,6 +94,19 @@ GET /leaderboard/tag?tag=helpful&window=week
   ]
 }
 ```
+---
+
+## Why This Data Is Reliable
+
+Anyone can publish a `kind:38383` event to Nostr. Without filtering, 
+review scores are trivially manipulated — sockpuppet accounts, 
+self-reviews, and review bombing are all trivial attacks on a naive system.
+
+Every review served by this API has passed strict validation before 
+being stored. This means scores are resistant to spam and manipulation, 
+making them safe to display in your app without additional filtering.
+
+The validation rules below are what make the data trustworthy.
 
 ---
 
