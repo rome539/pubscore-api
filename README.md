@@ -143,30 +143,3 @@ pubscore-api/
 └── data/
     └── pubscore.db     (created at runtime, not tracked in git)
 ```
-
----
-
-## PM2 Commands
-
-```bash
-pm2 logs pubscore-api      # view logs
-pm2 restart pubscore-api   # restart
-pm2 monit                  # monitor CPU/RAM
-pm2 stop pubscore-api      # stop
-```
-
----
-
-## Deploy Updates
-
-```bash
-# On your local machine:
-git add .
-git commit -m "your change"
-git push
-
-# On the VPS:
-cd ~/pubscore-api
-git pull origin main
-pm2 restart pubscore-api
-```
