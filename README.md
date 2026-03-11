@@ -123,32 +123,9 @@ Every review stored has passed these checks:
 
 ---
 
-## Deployment
-
-### 1. DNS
-Add an A record pointing `api.yourdomain.com` to your VPS IP.
-
-### 2. Copy files to VPS
-```bash
-scp -r ./* deploy@YOUR_VPS_IP:~/pubscore-api/
-```
-
-### 3. SSH in and deploy
-```bash
-ssh deploy@YOUR_VPS_IP
-cd ~/pubscore-api
-chmod +x deploy.sh
-./deploy.sh
-```
-
-### 4. Verify
-```bash
-# On the VPS:
-curl localhost:3000/health
-
-# Once DNS propagates:
-curl https://api.yourdomain.com/health
-```
+## Self-Hosting
+Clone the repo, add an A record pointing your domain to your VPS, 
+run `deploy.sh`, and verify with `curl localhost:3000/health`.
 
 ---
 
