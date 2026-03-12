@@ -4,7 +4,9 @@ import { Relay } from 'nostr-tools/relay';
 import { validateReview } from './validator.js';
 import { upsertReviewsBatch, addPendingReview, getIngestionState, setIngestionState, getTotalReviewCount, getPendingCount, getDB } from './db.js';
 
-const REVIEW_KIND = 38383;
+const REVIEW_KIND = 38100;
+const LEGACY_KIND = 38383; // Transition: still ingest old reviews from relays
+const INGEST_KINDS = [REVIEW_KIND, LEGACY_KIND];
 
 const RELAYS = [
   'wss://relay.damus.io',
@@ -80,7 +82,7 @@ async function connectToRelay(url, sinceTimestamp) {
     console.log(`[Ingester] Connected to ${url}`);
 
     relay.subscribe(
-      [{ kinds: [REVIEW_KIND], since: sinceTimestamp }],
+      [{ kinds: INGEST_KINDS, since: sinceTimestamp }],
       {
         onevent(event) {
           processEvent(event);
@@ -147,7 +149,7 @@ async function runAuthorsBackfill() {
         relay = await Relay.connect(url);
         await new Promise(res => {
           relay.subscribe(
-            [{ kinds: [REVIEW_KIND], authors: batch, since }],
+            [{ kinds: INGEST_KINDS, authors: batch, since }],
             {
               onevent(event) {
                 processEvent(event);

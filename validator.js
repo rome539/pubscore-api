@@ -2,7 +2,9 @@
 import { verifyEvent } from 'nostr-tools';
 import { countRecentReviewsByReviewer, getReviewerStats } from './db.js';
 
-const REVIEW_KIND = 38383;
+const REVIEW_KIND = 38100;
+const LEGACY_KIND = 38383;
+const VALID_KINDS = [REVIEW_KIND, LEGACY_KIND];
 const MIN_REVIEWER_FOLLOWERS = 30;
 
 /**
@@ -15,7 +17,7 @@ const MIN_REVIEWER_FOLLOWERS = 30;
 export function validateReview(event) {
 
   // 1. Must be correct kind
-  if (event.kind !== REVIEW_KIND) {
+  if (!VALID_KINDS.includes(event.kind)) {
     return { valid: false, reason: `Wrong kind: ${event.kind}` };
   }
 
