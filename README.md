@@ -94,6 +94,19 @@ GET /leaderboard/tag?tag=helpful&window=week
   ]
 }
 ```
+---
+
+## Why This Data Is Reliable
+
+Anyone can publish a `kind:38383` event to Nostr. Without filtering, 
+review scores are trivially manipulated — sockpuppet accounts, 
+self-reviews, and review bombing are all trivial attacks on a naive system.
+
+Every review served by this API has passed strict validation before 
+being stored. This means scores are resistant to spam and manipulation, 
+making them safe to display in your app without additional filtering.
+
+The validation rules below are what make the data trustworthy.
 
 ---
 
@@ -110,32 +123,9 @@ Every review stored has passed these checks:
 
 ---
 
-## Deployment
-
-### 1. DNS
-Add an A record pointing `api.yourdomain.com` to your VPS IP.
-
-### 2. Copy files to VPS
-```bash
-scp -r ./* deploy@YOUR_VPS_IP:~/pubscore-api/
-```
-
-### 3. SSH in and deploy
-```bash
-ssh deploy@YOUR_VPS_IP
-cd ~/pubscore-api
-chmod +x deploy.sh
-./deploy.sh
-```
-
-### 4. Verify
-```bash
-# On the VPS:
-curl localhost:3000/health
-
-# Once DNS propagates:
-curl https://api.yourdomain.com/health
-```
+## Self-Hosting
+Clone the repo, add an A record pointing your domain to your VPS, 
+run `deploy.sh`, and verify with `curl localhost:3000/health`.
 
 ---
 
@@ -152,31 +142,4 @@ pubscore-api/
 ├── deploy.sh           — One-shot VPS setup
 └── data/
     └── pubscore.db     (created at runtime, not tracked in git)
-```
-
----
-
-## PM2 Commands
-
-```bash
-pm2 logs pubscore-api      # view logs
-pm2 restart pubscore-api   # restart
-pm2 monit                  # monitor CPU/RAM
-pm2 stop pubscore-api      # stop
-```
-
----
-
-## Deploy Updates
-
-```bash
-# On your local machine:
-git add .
-git commit -m "your change"
-git push
-
-# On the VPS:
-cd ~/pubscore-api
-git pull origin main
-pm2 restart pubscore-api
 ```
