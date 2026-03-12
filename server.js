@@ -2,7 +2,7 @@
 import express from 'express';
 import cors from 'cors';
 import { nip19 } from 'nostr-tools';
-import { initDB, getReviewsForPubkey, getScoreForPubkey, getScoresForPubkeys, getTotalReviewCount, getDistinctReviewedCount, getLeaderboard, getLeaderboardSince, getLeaderboardByTag, getLeaderboardByTagSince, getPendingCount } from './db.js';
+import { initDB, getReviewsForPubkey, getScoreForPubkey, getScoresForPubkeys, getTotalReviewCount, getDistinctReviewedCount, getLeaderboard, getLeaderboardSince, getLeaderboardByTag, getLeaderboardByTagSince, getPendingCount, getRecentReviews } from './db.js';
 import { startIngester, getIngesterStats } from './ingester.js';
 import { startFollowerChecker, getFollowerCheckerStats } from './follower-checker.js';
 
@@ -134,6 +134,59 @@ app.get('/reviews', (req, res) => {
     hasMore,
     nextCursor,
     reviews: page.map(r => ({
+      reviewer: hexToNpub(r.reviewer_pubkey),
+      reviewerHex: r.reviewer_pubkey,
+      rating: r.rating,
+      content: r.content,
+      categories: r.categories ? JSON.parse(r.categories) : [],
+      created_at: r.created_at
+    }))
+  });
+});
+
+/**
+ * GET /reviews/recent?npub={npub}&since={timestamp}&limit={n}
+ * Recent validated reviews — for notifications and activity feeds
+ *
+ * Parameters:
+ *   - npub    (optional) — filter to reviews targeting this profile
+ *   - since   (optional) — only return reviews newer than this Unix timestamp
+ *   - limit   (optional) — max results, default 20, max 100
+ *
+ * Without npub: returns the most recent reviews across all profiles (global feed)
+ * With npub: returns recent reviews for that specific profile (notifications)
+ *
+ * Examples:
+ *   GET /reviews/recent                          → latest 20 reviews globally
+ *   GET /reviews/recent?npub=npub1...            → latest reviews for a profile
+ *   GET /reviews/recent?npub=npub1...&since=1741200000  → new reviews since timestamp
+ *   GET /reviews/recent?limit=5                  → latest 5 reviews globally
+ */
+app.get('/reviews/recent', (req, res) => {
+  const { npub, since: sinceStr, limit: limitStr = '20' } = req.query;
+  const limit = Math.min(Math.max(parseInt(limitStr, 10) || 20, 1), 100);
+  const since = sinceStr ? parseInt(sinceStr, 10) : null;
+
+  if (sinceStr && isNaN(since)) {
+    return res.status(400).json({ error: 'Invalid since parameter — must be a Unix timestamp' });
+  }
+
+  let pubkey = null;
+  if (npub) {
+    pubkey = npubToHex(npub);
+    if (!pubkey) {
+      return res.status(400).json({ error: 'Invalid npub parameter' });
+    }
+  }
+
+  const reviews = getRecentReviews(pubkey, since, limit);
+
+  res.json({
+    count: reviews.length,
+    since: since || null,
+    reviews: reviews.map(r => ({
+      subject: hexToNpub(r.subject_pubkey),
+      subjectHex: r.subject_pubkey,
       reviewer: hexToNpub(r.reviewer_pubkey),
       reviewerHex: r.reviewer_pubkey,
       rating: r.rating,
@@ -336,6 +389,8 @@ async function main() {
     console.log(`[Server] Endpoints:`);
     console.log(`  GET /reviews?npub=...`);
     console.log(`  GET /reviews?npub=...&limit=50&before={cursor}`);
+    console.log(`  GET /reviews/recent`);
+    console.log(`  GET /reviews/recent?npub=...&since={timestamp}`);
     console.log(`  GET /score?npub=...`);
     console.log(`  GET /scores?npubs=...,...`);
     console.log(`  GET /leaderboard?window=all|week|month`);

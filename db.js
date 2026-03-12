@@ -128,6 +128,27 @@ export function getReviewsForPubkey(reviewedPubkey, limit = 50, before = null) {
   `).all(reviewedPubkey, limit);
 }
 
+/** Get recent validated reviews, optionally filtered by subject and/or time */
+export function getRecentReviews(reviewedPubkey, since, limit) {
+  let sql = 'SELECT id, reviewer_pubkey, reviewed_pubkey AS subject_pubkey, rating, content, categories, created_at FROM reviews WHERE 1=1';
+  const params = [];
+
+  if (reviewedPubkey) {
+    sql += ' AND reviewed_pubkey = ?';
+    params.push(reviewedPubkey);
+  }
+
+  if (since) {
+    sql += ' AND created_at > ?';
+    params.push(since);
+  }
+
+  sql += ' ORDER BY created_at DESC LIMIT ?';
+  params.push(limit);
+
+  return getDB().prepare(sql).all(...params);
+}
+
 /** Get score summary for a reviewed pubkey */
 export function getScoreForPubkey(reviewedPubkey) {
   return getDB().prepare(`
