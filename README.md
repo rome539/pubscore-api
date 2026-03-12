@@ -98,7 +98,7 @@ GET /leaderboard/tag?tag=helpful&window=week
 
 ## Why This Data Is Reliable
 
-Anyone can publish a `kind:38383` event to Nostr. Without filtering, 
+Anyone can publish a `kind:38100` event to Nostr. Without filtering, 
 review scores are trivially manipulated — sockpuppet accounts, 
 self-reviews, and review bombing are all trivial attacks on a naive system.
 
