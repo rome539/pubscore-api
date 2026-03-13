@@ -270,7 +270,7 @@ Every review stored has passed these checks:
 - ✓ Rating between 1–5
 - ✓ No self-reviews
 - ✓ One review per reviewer per profile (newest kept)
-- ✓ Max 20 reviews per reviewer per day
+- ✓ Max 50 reviews per reviewer per day
 
 ---
 
