@@ -41,6 +41,7 @@ Example:
 | Endpoint | Description |
 |----------|-------------|
 | `GET /reviews?npub={npub}` | Full reviews for a profile — rating, text, categories, reviewer, timestamp. Supports cursor-based pagination. |
+| `GET /reviews/by?npub={npub}` | All reviews written by a given npub — subjects, ratings, text, categories. |
 | `GET /reviews/recent?npub={npub}&since={timestamp}&limit={n}` | Recent validated reviews for notifications and activity feeds. If `npub` is omitted, returns the latest reviews globally. |
 | `GET /score?npub={npub}` | Lightweight score only — avg rating + count |
 | `GET /scores?npubs={npub1,npub2,...}` | Batch scores for up to 200 npubs |
@@ -99,6 +100,51 @@ const data2 = await res2.json();
 ```
 
 ---
+
+## Reviews By Author — `/reviews/by`
+
+Returns all reviews written by a given npub, ordered newest first.
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `npub` | required | The reviewer's npub |
+
+### Example
+
+```js
+const res = await fetch('https://api.pubscore.space/reviews/by?npub=npub1...');
+const data = await res.json();
+
+// data.count === 24
+// data.reviews[0].subject === "npub1..."  (who they reviewed)
+// data.reviews[0].rating === 5
+```
+
+### Response
+
+```json
+{
+  "npub": "npub1...",
+  "count": 24,
+  "reviews": [
+    {
+      "subject": "npub1...",
+      "subjectHex": "...",
+      "reviewer": "npub1...",
+      "reviewerHex": "...",
+      "rating": 5,
+      "content": "Solid trader, fast and reliable.",
+      "categories": ["trade", "helpful"],
+      "created_at": 1741201234
+    }
+  ]
+}
+```
+
+---
+
 ### Notifications / Activity Feed — `/reviews/recent`
 
 The `/reviews/recent` endpoint provides recent validated reviews and can be used for notification-style polling or activity feeds.
@@ -215,4 +261,3 @@ pubscore-api/
 └── data/
     └── pubscore.db     (created at runtime, not tracked in git)
 ```
-
