@@ -52,10 +52,10 @@ export function validateReview(event) {
     return { valid: false, reason: `Invalid rating: ${ratingTag[1]}` };
   }
 
-  // 6. Rate limit: max 20 reviews per pubkey per day
+  // 6. Rate limit: max 50 reviews per pubkey per day
   const recentCount = countRecentReviewsByReviewer(event.pubkey);
-  if (recentCount >= 20) {
-    return { valid: false, reason: 'Rate limit exceeded (20/day)' };
+  if (recentCount >= 50) {
+    return { valid: false, reason: 'Rate limit exceeded (50/day)' };
   }
 
   // 7. Extract categories from 't' tags
