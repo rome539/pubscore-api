@@ -217,6 +217,7 @@ app.get('/reviews/by', (req, res) => {
     npub,
     count: reviews.length,
     reviews: reviews.map(r => ({
+      id: r.id,
       subject: hexToNpub(r.reviewed_pubkey),
       subjectHex: r.reviewed_pubkey,
       reviewer: hexToNpub(r.reviewer_pubkey),
