@@ -149,7 +149,7 @@ const res3 = await fetch('https://api.pubscore.space/reviews/recent?npub=npub1..
 Returns all profiles tagged with a specific category, ordered by tag count.
 
 ### Valid Tags
-`trade` `knowledge` `helpful` `funny` `creative` `warning`
+`TRUSTWORTHY` `KNOWLEDGEABLE` `HELPFUL` `FUNNY` `CREATIVE` `WARNING`
 
 ### Example
 ```
