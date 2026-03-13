@@ -43,6 +43,7 @@ Example:
 | `GET /reviews?npub={npub}` | Full reviews for a profile — rating, text, categories, reviewer, timestamp. Supports cursor-based pagination. |
 | `GET /reviews/by?npub={npub}` | All reviews written by a given npub — subjects, ratings, text, categories. |
 | `GET /reviews/recent?npub={npub}&since={timestamp}&limit={n}` | Recent validated reviews for notifications and activity feeds. If `npub` is omitted, returns the latest reviews globally. |
+| `DELETE /reviews/{id}?npub={npub}` | Delete a review from the API database. Only the original reviewer can delete their own. |
 | `GET /score?npub={npub}` | Lightweight score only — avg rating + count |
 | `GET /scores?npubs={npub1,npub2,...}` | Batch scores for up to 200 npubs |
 | `GET /leaderboard?window={all\|week\|month}&limit={n}` | Top rated profiles (max 1000) |
@@ -130,6 +131,7 @@ const data = await res.json();
   "count": 24,
   "reviews": [
     {
+      "id": "63893e47...",
       "subject": "npub1...",
       "subjectHex": "...",
       "reviewer": "npub1...",
@@ -142,6 +144,37 @@ const data = await res.json();
   ]
 }
 ```
+
+---
+
+## Delete a Review — `DELETE /reviews/{id}`
+
+Removes a review from the API database. Only the original reviewer can delete their own review. This should be called alongside publishing a kind 5 deletion event to Nostr relays.
+
+### Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `id` (path) | The 64-character hex event ID of the review |
+| `npub` (query) | The reviewer's npub (used to verify ownership) |
+
+### Example
+
+```js
+await fetch('https://api.pubscore.space/reviews/63893e47...?npub=npub1...', {
+  method: 'DELETE'
+});
+// { "deleted": true }
+```
+
+### Responses
+
+| Status | Body | Meaning |
+|--------|------|---------|
+| 200 | `{ "deleted": true }` | Review removed |
+| 200 | `{ "deleted": false, "reason": "Review not found" }` | No review with that ID |
+| 400 | `{ "error": "Invalid event ID" }` | ID is not 64-char hex |
+| 403 | `{ "error": "You can only delete your own reviews" }` | npub doesn't match the reviewer |
 
 ---
 
