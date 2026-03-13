@@ -9,6 +9,33 @@ Validated Nostr review API powering **PubScore** and Fren Finder.
 
 ---
 
+
+## Review Event Format (Nostr)
+
+PubScore reviews are published as `kind:38100` events.
+
+Example:
+
+```json
+{
+  "kind": 38100,
+  "pubkey": "<reviewer's hex pubkey>",
+  "created_at": 1709312400,
+  "tags": [
+    ["p", "<subject's hex pubkey>"],
+    ["d", "<subject's hex pubkey>"],
+    ["rating", "4"],
+    ["t", "helpful"],
+    ["t", "knowledge"]
+  ],
+  "content": "Great contributor to the community, always sharing useful resources.",
+  "id": "...",
+  "sig": "..."
+}
+```
+
+---
+
 ## API Endpoints
 
 | Endpoint | Description |
@@ -69,6 +96,50 @@ const data = await res.json();
 const res2 = await fetch(`https://api.pubscore.space/reviews?npub=npub1...&before=${data.nextCursor}`);
 const data2 = await res2.json();
 // Keep fetching until data.hasMore === false
+```
+
+---
+### Notifications / Activity Feed — `/reviews/recent`
+
+The `/reviews/recent` endpoint provides recent validated reviews and can be used for notification-style polling or activity feeds.
+
+#### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `npub` | optional | Filter to reviews targeting this profile |
+| `since` | none | Only return reviews newer than this Unix timestamp |
+| `limit` | `20` | Number of reviews to return (max 100) |
+
+#### Example Usage
+
+```js
+// Latest recent reviews globally
+const res = await fetch('https://api.pubscore.space/reviews/recent');
+const data = await res.json();
+
+// Recent reviews for one profile
+const res2 = await fetch('https://api.pubscore.space/reviews/recent?npub=npub1...');
+
+// Only reviews newer than a timestamp
+const res3 = await fetch('https://api.pubscore.space/reviews/recent?npub=npub1...&since=1741200000');
+
+{
+  "count": 2,
+  "since": 1741200000,
+  "reviews": [
+    {
+      "subject": "npub1...",
+      "subjectHex": "...",
+      "reviewer": "npub1...",
+      "reviewerHex": "...",
+      "rating": 5,
+      "content": "Very helpful trader.",
+      "categories": ["helpful", "trade"],
+      "created_at": 1741201234
+    }
+  ]
+}
 ```
 
 ---
@@ -144,3 +215,4 @@ pubscore-api/
 └── data/
     └── pubscore.db     (created at runtime, not tracked in git)
 ```
+
