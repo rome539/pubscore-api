@@ -134,6 +134,7 @@ app.get('/reviews', (req, res) => {
     hasMore,
     nextCursor,
     reviews: page.map(r => ({
+      id: r.id,
       reviewer: hexToNpub(r.reviewer_pubkey),
       reviewerHex: r.reviewer_pubkey,
       rating: r.rating,
