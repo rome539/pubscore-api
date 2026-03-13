@@ -2,7 +2,7 @@
 import express from 'express';
 import cors from 'cors';
 import { nip19 } from 'nostr-tools';
-import { initDB, getReviewsForPubkey, getReviewsByAuthor, getScoreForPubkey, getScoresForPubkeys, getTotalReviewCount, getDistinctReviewedCount, getLeaderboard, getLeaderboardSince, getLeaderboardByTag, getLeaderboardByTagSince, getPendingCount, getRecentReviews } from './db.js';
+import { initDB, getDB, getReviewsForPubkey, getReviewsByAuthor, getScoreForPubkey, getScoresForPubkeys, getTotalReviewCount, getDistinctReviewedCount, getLeaderboard, getLeaderboardSince, getLeaderboardByTag, getLeaderboardByTagSince, getPendingCount, getRecentReviews, deleteReviewByEventId } from './db.js';
 import { startIngester, getIngesterStats } from './ingester.js';
 import { startFollowerChecker, getFollowerCheckerStats } from './follower-checker.js';
 
@@ -15,7 +15,7 @@ const app = express();
 
 app.use(cors({
   origin: '*',
-  methods: ['GET'],
+  methods: ['GET', 'DELETE'],
   maxAge: 86400
 }));
 
@@ -390,6 +390,36 @@ app.get('/stats', (req, res) => {
     totalReviews: getTotalReviewCount(),
     totalProfiles: getDistinctReviewedCount()
   });
+});
+
+/**
+ * DELETE /reviews/:id?npub={npub}
+ * Remove a review from the API database after the user publishes a kind 5 deletion.
+ * Only the original reviewer can delete their own review.
+ */
+app.delete('/reviews/:id', (req, res) => {
+  const { id } = req.params;
+  const { npub } = req.query;
+  const pubkey = npubToHex(npub);
+
+  if (!id || id.length !== 64) {
+    return res.status(400).json({ error: 'Invalid event ID' });
+  }
+  if (!pubkey) {
+    return res.status(400).json({ error: 'Invalid or missing npub parameter' });
+  }
+
+  // Verify the reviewer owns this review before deleting
+  const review = getDB().prepare('SELECT reviewer_pubkey FROM reviews WHERE id = ?').get(id);
+  if (!review) {
+    return res.json({ deleted: false, reason: 'Review not found' });
+  }
+  if (review.reviewer_pubkey !== pubkey) {
+    return res.status(403).json({ error: 'You can only delete your own reviews' });
+  }
+
+  deleteReviewByEventId(id);
+  res.json({ deleted: true });
 });
 
 // 404 catch-all
