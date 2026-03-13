@@ -48,14 +48,17 @@ The `/reviews` endpoint uses cursor-based pagination to handle profiles with lar
   "nextCursor": 1741200000,
   "reviews": [...]
 }
+```
 
-Field	Description
-count	Total number of reviews for this profile
-hasMore	true if more reviews exist beyond this page
-nextCursor	Pass this as before in the next request to get the next page. null when on the last page.
+| Field | Description |
+|-------|-------------|
+| `count` | Total number of reviews for this profile |
+| `hasMore` | `true` if more reviews exist beyond this page |
+| `nextCursor` | Pass this as `before` in the next request to get the next page. `null` when on the last page. |
 
-Example — Infinite Scroll
+### Example — Infinite Scroll
 
+```js
 // First page
 const res = await fetch('https://api.pubscore.space/reviews?npub=npub1...');
 const data = await res.json();
@@ -66,69 +69,24 @@ const data = await res.json();
 const res2 = await fetch(`https://api.pubscore.space/reviews?npub=npub1...&before=${data.nextCursor}`);
 const data2 = await res2.json();
 // Keep fetching until data.hasMore === false
+```
 
+---
 
-⸻
-
-Notifications / Activity Feed — /reviews/recent
-
-The /reviews/recent endpoint can be used for simple notification-style polling and recent activity feeds.
-
-Parameters
-
-Parameter	Default	Description
-npub	optional	Filter to reviews targeting this profile
-since	none	Only return reviews newer than this Unix timestamp
-limit	20	Number of reviews to return (max 100)
-
-Example Usage
-
-// Latest recent reviews globally
-const res = await fetch('https://api.pubscore.space/reviews/recent');
-const data = await res.json();
-
-// Recent reviews for one profile
-const res2 = await fetch('https://api.pubscore.space/reviews/recent?npub=npub1...');
-
-// Only reviews newer than a timestamp
-const res3 = await fetch('https://api.pubscore.space/reviews/recent?npub=npub1...&since=1741200000');
-
-Example Response
-
-{
-  "count": 2,
-  "since": 1741200000,
-  "reviews": [
-    {
-      "subject": "npub1...",
-      "subjectHex": "...",
-      "reviewer": "npub1...",
-      "reviewerHex": "...",
-      "rating": 5,
-      "content": "Very helpful trader.",
-      "categories": ["helpful", "trade"],
-      "created_at": 1741201234
-    }
-  ]
-}
-
-
-⸻
-
-Tag Leaderboard — /leaderboard/tag
+## Tag Leaderboard — `/leaderboard/tag`
 
 Returns all profiles tagged with a specific category, ordered by tag count.
 
-Valid Tags
+### Valid Tags
+`trade` `knowledge` `helpful` `funny` `creative` `warning`
 
-trade knowledge helpful funny creative warning
-
-Example
-
+### Example
+```
 GET /leaderboard/tag?tag=helpful&window=week
+```
 
-Response
-
+### Response
+```json
 {
   "tag": "helpful",
   "window": "week",
@@ -136,45 +94,45 @@ Response
     { "npub": "npub1...", "pubkey": "...", "count": 12 }
   ]
 }
+```
+---
 
+## Why This Data Is Reliable
 
-⸻
-
-Why This Data Is Reliable
-
-Anyone can publish a kind:38100 event to Nostr. Without filtering,
-review scores are trivially manipulated — sockpuppet accounts,
+Anyone can publish a `kind:38100` event to Nostr. Without filtering, 
+review scores are trivially manipulated — sockpuppet accounts, 
 self-reviews, and review bombing are all trivial attacks on a naive system.
 
-Every review served by this API has passed strict validation before
-being stored. This means scores are resistant to spam and manipulation,
+Every review served by this API has passed strict validation before 
+being stored. This means scores are resistant to spam and manipulation, 
 making them safe to display in your app without additional filtering.
 
 The validation rules below are what make the data trustworthy.
 
-⸻
+---
 
-Validation Rules
+## Validation Rules
 
 Every review stored has passed these checks:
-	•	✓ Valid Nostr event signature
-	•	✓ Reviewer has ≥30 followers
-	•	✓ Rating between 1–5
-	•	✓ No self-reviews
-	•	✓ One review per reviewer per profile (newest kept)
-	•	✓ Max 20 reviews per reviewer per day
 
-⸻
+- ✓ Valid Nostr event signature
+- ✓ Reviewer has ≥30 followers
+- ✓ Rating between 1–5
+- ✓ No self-reviews
+- ✓ One review per reviewer per profile (newest kept)
+- ✓ Max 20 reviews per reviewer per day
 
-Self-Hosting
+---
 
-Clone the repo, add an A record pointing your domain to your VPS,
-run deploy.sh, and verify with curl localhost:3000/health.
+## Self-Hosting
+Clone the repo, add an A record pointing your domain to your VPS, 
+run `deploy.sh`, and verify with `curl localhost:3000/health`.
 
-⸻
+---
 
-Files
+## Files
 
+```
 pubscore-api/
 ├── server.js           — Express API + routes
 ├── validator.js        — Validation rules
@@ -185,3 +143,4 @@ pubscore-api/
 ├── deploy.sh           — One-shot VPS setup
 └── data/
     └── pubscore.db     (created at runtime, not tracked in git)
+```
