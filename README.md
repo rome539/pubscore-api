@@ -2,10 +2,37 @@
 Validated Nostr review API powering **PubScore** and Fren Finder.
 
 ## What It Does
-- **Ingester** — Listens to 6 Nostr relays for `kind:38383` review events continuously, with an authors backfill pass every 6 hours to catch events missed by relay `#p` tag indexing
+- **Ingester** — Listens to 6 Nostr relays for `kind:38100` review events continuously, with an authors backfill pass every 6 hours to catch events missed by relay `#p` tag indexing
 - **Validator** — Filters out self-reviews, bad signatures, invalid ratings, and reviewers with fewer than 30 followers
 - **SQLite DB** — Stores only clean, deduplicated reviews (one per reviewer per profile, keeps newest)
 - **REST API** — Serves clean review data publicly at `https://api.pubscore.space`
+
+---
+
+
+## Review Event Format (Nostr)
+
+PubScore reviews are published as `kind:38100` events.
+
+Example:
+
+```json
+{
+  "kind": 38100,
+  "pubkey": "<reviewer's hex pubkey>",
+  "created_at": 1709312400,
+  "tags": [
+    ["p", "<subject's hex pubkey>"],
+    ["d", "<subject's hex pubkey>"],
+    ["rating", "4"],
+    ["t", "helpful"],
+    ["t", "knowledge"]
+  ],
+  "content": "Great contributor to the community, always sharing useful resources.",
+  "id": "...",
+  "sig": "..."
+}
+```
 
 ---
 
@@ -14,6 +41,7 @@ Validated Nostr review API powering **PubScore** and Fren Finder.
 | Endpoint | Description |
 |----------|-------------|
 | `GET /reviews?npub={npub}` | Full reviews for a profile — rating, text, categories, reviewer, timestamp. Supports cursor-based pagination. |
+| `GET /reviews/recent?npub={npub}&since={timestamp}&limit={n}` | Recent validated reviews for notifications and activity feeds. If `npub` is omitted, returns the latest reviews globally. |
 | `GET /score?npub={npub}` | Lightweight score only — avg rating + count |
 | `GET /scores?npubs={npub1,npub2,...}` | Batch scores for up to 200 npubs |
 | `GET /leaderboard?window={all\|week\|month}&limit={n}` | Top rated profiles (max 1000) |
@@ -71,13 +99,57 @@ const data2 = await res2.json();
 ```
 
 ---
+### Notifications / Activity Feed — `/reviews/recent`
+
+The `/reviews/recent` endpoint provides recent validated reviews and can be used for notification-style polling or activity feeds.
+
+#### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `npub` | optional | Filter to reviews targeting this profile |
+| `since` | none | Only return reviews newer than this Unix timestamp |
+| `limit` | `20` | Number of reviews to return (max 100) |
+
+#### Example Usage
+
+```js
+// Latest recent reviews globally
+const res = await fetch('https://api.pubscore.space/reviews/recent');
+const data = await res.json();
+
+// Recent reviews for one profile
+const res2 = await fetch('https://api.pubscore.space/reviews/recent?npub=npub1...');
+
+// Only reviews newer than a timestamp
+const res3 = await fetch('https://api.pubscore.space/reviews/recent?npub=npub1...&since=1741200000');
+
+{
+  "count": 2,
+  "since": 1741200000,
+  "reviews": [
+    {
+      "subject": "npub1...",
+      "subjectHex": "...",
+      "reviewer": "npub1...",
+      "reviewerHex": "...",
+      "rating": 5,
+      "content": "Very helpful trader.",
+      "categories": ["helpful", "trade"],
+      "created_at": 1741201234
+    }
+  ]
+}
+```
+
+---
 
 ## Tag Leaderboard — `/leaderboard/tag`
 
 Returns all profiles tagged with a specific category, ordered by tag count.
 
 ### Valid Tags
-`trade` `knowledge` `helpful` `funny` `creative` `warning`
+`TRUSTWORTHY` `KNOWLEDGEABLE` `HELPFUL` `FUNNY` `CREATIVE` `WARNING`
 
 ### Example
 ```
@@ -98,7 +170,7 @@ GET /leaderboard/tag?tag=helpful&window=week
 
 ## Why This Data Is Reliable
 
-Anyone can publish a `kind:38383` event to Nostr. Without filtering, 
+Anyone can publish a `kind:38100` event to Nostr. Without filtering, 
 review scores are trivially manipulated — sockpuppet accounts, 
 self-reviews, and review bombing are all trivial attacks on a naive system.
 
@@ -143,3 +215,4 @@ pubscore-api/
 └── data/
     └── pubscore.db     (created at runtime, not tracked in git)
 ```
+
