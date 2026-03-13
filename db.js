@@ -366,6 +366,17 @@ export function getLeaderboardByTag(tag, minReviews = 1, limit = 1000) {
   `).all(`%"${tag}"%`, minReviews, limit);
 }
 
+/** Get reviews written by a reviewer pubkey, ordered newest first */
+export function getReviewsByAuthor(reviewerPubkey, limit = 200) {
+  return getDB().prepare(`
+    SELECT id, reviewer_pubkey, reviewed_pubkey, rating, content, categories, created_at
+    FROM reviews
+    WHERE reviewer_pubkey = ?
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(reviewerPubkey, limit);
+}
+
 /** Get tag leaderboard filtered by time window */
 export function getLeaderboardByTagSince(tag, sinceTs, minReviews = 1, limit = 1000) {
   return getDB().prepare(`

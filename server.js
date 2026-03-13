@@ -2,7 +2,7 @@
 import express from 'express';
 import cors from 'cors';
 import { nip19 } from 'nostr-tools';
-import { initDB, getReviewsForPubkey, getScoreForPubkey, getScoresForPubkeys, getTotalReviewCount, getDistinctReviewedCount, getLeaderboard, getLeaderboardSince, getLeaderboardByTag, getLeaderboardByTagSince, getPendingCount, getRecentReviews } from './db.js';
+import { initDB, getReviewsForPubkey, getReviewsByAuthor, getScoreForPubkey, getScoresForPubkeys, getTotalReviewCount, getDistinctReviewedCount, getLeaderboard, getLeaderboardSince, getLeaderboardByTag, getLeaderboardByTagSince, getPendingCount, getRecentReviews } from './db.js';
 import { startIngester, getIngesterStats } from './ingester.js';
 import { startFollowerChecker, getFollowerCheckerStats } from './follower-checker.js';
 
@@ -187,6 +187,38 @@ app.get('/reviews/recent', (req, res) => {
     reviews: reviews.map(r => ({
       subject: hexToNpub(r.subject_pubkey),
       subjectHex: r.subject_pubkey,
+      reviewer: hexToNpub(r.reviewer_pubkey),
+      reviewerHex: r.reviewer_pubkey,
+      rating: r.rating,
+      content: r.content,
+      categories: r.categories ? JSON.parse(r.categories) : [],
+      created_at: r.created_at
+    }))
+  });
+});
+
+/**
+ * GET /reviews/by?npub={npub}
+ * Reviews written BY a given npub (as a reviewer)
+ *
+ * Example:
+ *   GET /reviews/by?npub=npub1...  → all reviews this person has written
+ */
+app.get('/reviews/by', (req, res) => {
+  const { npub } = req.query;
+  const pubkey = npubToHex(npub);
+  if (!pubkey) {
+    return res.status(400).json({ error: 'Invalid or missing npub parameter' });
+  }
+
+  const reviews = getReviewsByAuthor(pubkey);
+
+  res.json({
+    npub,
+    count: reviews.length,
+    reviews: reviews.map(r => ({
+      subject: hexToNpub(r.reviewed_pubkey),
+      subjectHex: r.reviewed_pubkey,
       reviewer: hexToNpub(r.reviewer_pubkey),
       reviewerHex: r.reviewer_pubkey,
       rating: r.rating,
@@ -391,6 +423,7 @@ async function main() {
     console.log(`  GET /reviews?npub=...&limit=50&before={cursor}`);
     console.log(`  GET /reviews/recent`);
     console.log(`  GET /reviews/recent?npub=...&since={timestamp}`);
+    console.log(`  GET /reviews/by?npub=...`);
     console.log(`  GET /score?npub=...`);
     console.log(`  GET /scores?npubs=...,...`);
     console.log(`  GET /leaderboard?window=all|week|month`);
