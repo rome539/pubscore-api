@@ -85,7 +85,7 @@ function hexToNpub(hex) {
 }
 
 // Valid tag keys
-const VALID_TAGS = ['trustworthy', 'knowledgeable', 'helpful', 'funny', 'creative', 'warning'];
+const VALID_TAGS = ['trade', 'knowledge', 'helpful', 'funny', 'creative', 'warning'];
 
 // ---------------------------------------------------------------------------
 // Routes

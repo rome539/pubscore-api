@@ -42,13 +42,20 @@ export function validateReview(event) {
     return { valid: false, reason: 'Self-review not allowed' };
   }
 
-  // 5. Extract and validate rating (trusted / neutral / avoid)
+  // 5. Extract and validate rating (trusted / neutral / avoid, or legacy 1-5)
   const VALID_RATINGS = ['trusted', 'neutral', 'avoid'];
   const ratingTag = event.tags.find(t => t[0] === 'rating');
   if (!ratingTag || !ratingTag[1]) {
     return { valid: false, reason: 'Missing rating tag' };
   }
-  const rating = ratingTag[1].toLowerCase();
+  let rating = ratingTag[1].toLowerCase();
+  // Legacy: convert numeric 1-5 to vote string
+  const numRating = parseInt(ratingTag[1], 10);
+  if (!isNaN(numRating) && numRating >= 1 && numRating <= 5) {
+    if (numRating >= 4) rating = 'trusted';
+    else if (numRating >= 2) rating = 'neutral';
+    else rating = 'avoid';
+  }
   if (!VALID_RATINGS.includes(rating)) {
     return { valid: false, reason: `Invalid rating: ${ratingTag[1]} (must be trusted, neutral, or avoid)` };
   }

@@ -50,7 +50,7 @@ export function initDB() {
       id TEXT PRIMARY KEY,
       reviewer_pubkey TEXT NOT NULL,
       reviewed_pubkey TEXT NOT NULL,
-      rating INTEGER NOT NULL,
+      rating TEXT NOT NULL,
       content TEXT,
       categories TEXT,
       created_at INTEGER NOT NULL,
