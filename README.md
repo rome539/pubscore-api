@@ -3,7 +3,7 @@ Validated Nostr review API powering **PubScore** and Fren Finder.
 
 ## What It Does
 - **Ingester** — Listens to 6 Nostr relays for `kind:38100` review events continuously, with an authors backfill pass every 6 hours to catch events missed by relay `#p` tag indexing
-- **Validator** — Filters out self-reviews, bad signatures, invalid ratings, and reviewers with fewer than 30 followers
+- **Validator** — Filters out self-reviews, bad signatures, invalid votes, and reviewers with fewer than 30 followers
 - **SQLite DB** — Stores only clean, deduplicated reviews (one per reviewer per profile, keeps newest)
 - **REST API** — Serves clean review data publicly at `https://api.pubscore.space`
 
@@ -13,6 +13,8 @@ Validated Nostr review API powering **PubScore** and Fren Finder.
 ## Review Event Format (Nostr)
 
 PubScore reviews are published as `kind:38100` events.
+
+Instead of rating 1–5 stars directly, reviewers vote with one of three values: `trusted`, `neutral`, or `avoid`. These votes are aggregated into a star rating (trusted = 5, neutral = 3, avoid = 1).
 
 Example:
 
@@ -24,7 +26,7 @@ Example:
   "tags": [
     ["p", "<subject's hex pubkey>"],
     ["d", "<subject's hex pubkey>"],
-    ["rating", "4"],
+    ["rating", "trusted"],
     ["t", "helpful"],
     ["t", "knowledge"]
   ],
@@ -34,17 +36,27 @@ Example:
 }
 ```
 
+### Valid Rating Values
+
+| Value | Meaning | Star Weight |
+|-------|---------|-------------|
+| `trusted` | This person is trustworthy | 5 |
+| `neutral` | No strong opinion | 3 |
+| `avoid` | Others should be cautious | 1 |
+
+Legacy numeric ratings (1–5) are still accepted and automatically converted: 4–5 → trusted, 2–3 → neutral, 1 → avoid.
+
 ---
 
 ## API Endpoints
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /reviews?npub={npub}` | Full reviews for a profile — rating, text, categories, reviewer, timestamp. Supports cursor-based pagination. |
-| `GET /reviews/by?npub={npub}` | All reviews written by a given npub — subjects, ratings, text, categories. |
+| `GET /reviews?npub={npub}` | Full reviews for a profile — vote, text, categories, reviewer, timestamp. Supports cursor-based pagination. |
+| `GET /reviews/by?npub={npub}` | All reviews written by a given npub — subjects, votes, text, categories. |
 | `GET /reviews/recent?npub={npub}&since={timestamp}&limit={n}` | Recent validated reviews for notifications and activity feeds. If `npub` is omitted, returns the latest reviews globally. |
 | `DELETE /reviews/{id}?npub={npub}` | Delete a review from the API database. Only the original reviewer can delete their own. |
-| `GET /score?npub={npub}` | Lightweight score only — avg rating + count |
+| `GET /score?npub={npub}` | Lightweight score — avg rating + count + vote breakdown |
 | `GET /scores?npubs={npub1,npub2,...}` | Batch scores for up to 200 npubs |
 | `GET /leaderboard?window={all\|week\|month}&limit={n}` | Top rated profiles (max 1000) |
 | `GET /leaderboard/tag?tag={tag}&window={all\|week\|month}` | All profiles tagged with a specific category |
@@ -72,6 +84,11 @@ The `/reviews` endpoint uses cursor-based pagination to handle profiles with lar
   "npub": "npub1...",
   "avgRating": 4.8,
   "count": 142,
+  "votes": {
+    "trusted": 120,
+    "neutral": 18,
+    "avoid": 4
+  },
   "limit": 50,
   "hasMore": true,
   "nextCursor": 1741200000,
@@ -82,6 +99,7 @@ The `/reviews` endpoint uses cursor-based pagination to handle profiles with lar
 | Field | Description |
 |-------|-------------|
 | `count` | Total number of reviews for this profile |
+| `votes` | Breakdown of trusted, neutral, and avoid votes |
 | `hasMore` | `true` if more reviews exist beyond this page |
 | `nextCursor` | Pass this as `before` in the next request to get the next page. `null` when on the last page. |
 
@@ -120,7 +138,7 @@ const data = await res.json();
 
 // data.count === 24
 // data.reviews[0].subject === "npub1..."  (who they reviewed)
-// data.reviews[0].rating === 5
+// data.reviews[0].rating === "trusted"
 ```
 
 ### Response
@@ -136,7 +154,7 @@ const data = await res.json();
       "subjectHex": "...",
       "reviewer": "npub1...",
       "reviewerHex": "...",
-      "rating": 5,
+      "rating": "trusted",
       "content": "Solid trader, fast and reliable.",
       "categories": ["trade", "helpful"],
       "created_at": 1741201234
@@ -212,7 +230,7 @@ const res3 = await fetch('https://api.pubscore.space/reviews/recent?npub=npub1..
       "subjectHex": "...",
       "reviewer": "npub1...",
       "reviewerHex": "...",
-      "rating": 5,
+      "rating": "trusted",
       "content": "Very helpful trader.",
       "categories": ["helpful", "trade"],
       "created_at": 1741201234
@@ -223,12 +241,44 @@ const res3 = await fetch('https://api.pubscore.space/reviews/recent?npub=npub1..
 
 ---
 
+## Score — `/score`
+
+Returns a lightweight score for a single profile, including the vote breakdown.
+
+### Example
+
+```js
+const res = await fetch('https://api.pubscore.space/score?npub=npub1...');
+const data = await res.json();
+
+// data.avgRating === 4.3
+// data.count === 17
+// data.votes === { trusted: 14, neutral: 2, avoid: 1 }
+```
+
+### Response
+
+```json
+{
+  "npub": "npub1...",
+  "avgRating": 4.3,
+  "count": 17,
+  "votes": {
+    "trusted": 14,
+    "neutral": 2,
+    "avoid": 1
+  }
+}
+```
+
+---
+
 ## Tag Leaderboard — `/leaderboard/tag`
 
 Returns all profiles tagged with a specific category, ordered by tag count.
 
 ### Valid Tags
-`TRUSTWORTHY` `KNOWLEDGEABLE` `HELPFUL` `FUNNY` `CREATIVE` `WARNING`
+`TRADE` `KNOWLEDGE` `HELPFUL` `FUNNY` `CREATIVE` `WARNING`
 
 ### Example
 ```
@@ -267,10 +317,10 @@ Every review stored has passed these checks:
 
 - ✓ Valid Nostr event signature
 - ✓ Reviewer has ≥30 followers
-- ✓ Rating between 1–5
+- ✓ Rating is trusted, neutral, or avoid (legacy 1–5 auto-converted)
 - ✓ No self-reviews
 - ✓ One review per reviewer per profile (newest kept)
-- ✓ Max 20 reviews per reviewer per day
+- ✓ Max 50 reviews per reviewer per day
 
 ---
 
