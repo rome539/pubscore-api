@@ -42,14 +42,15 @@ export function validateReview(event) {
     return { valid: false, reason: 'Self-review not allowed' };
   }
 
-  // 5. Extract and validate rating
+  // 5. Extract and validate rating (trusted / neutral / avoid)
+  const VALID_RATINGS = ['trusted', 'neutral', 'avoid'];
   const ratingTag = event.tags.find(t => t[0] === 'rating');
   if (!ratingTag || !ratingTag[1]) {
     return { valid: false, reason: 'Missing rating tag' };
   }
-  const rating = parseInt(ratingTag[1], 10);
-  if (isNaN(rating) || rating < 1 || rating > 5) {
-    return { valid: false, reason: `Invalid rating: ${ratingTag[1]}` };
+  const rating = ratingTag[1].toLowerCase();
+  if (!VALID_RATINGS.includes(rating)) {
+    return { valid: false, reason: `Invalid rating: ${ratingTag[1]} (must be trusted, neutral, or avoid)` };
   }
 
   // 6. Rate limit: max 50 reviews per pubkey per day

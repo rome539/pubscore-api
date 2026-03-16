@@ -22,7 +22,7 @@ export function initDB() {
       id TEXT PRIMARY KEY,
       reviewer_pubkey TEXT NOT NULL,
       reviewed_pubkey TEXT NOT NULL,
-      rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+      rating TEXT NOT NULL CHECK(rating IN ('trusted', 'neutral', 'avoid')),
       content TEXT,
       categories TEXT,
       created_at INTEGER NOT NULL,
@@ -154,7 +154,14 @@ export function getScoreForPubkey(reviewedPubkey) {
   return getDB().prepare(`
     SELECT
       COUNT(*) as count,
-      ROUND(AVG(CAST(rating AS REAL)), 2) as avgRating
+      ROUND(AVG(CASE rating
+        WHEN 'trusted' THEN 5.0
+        WHEN 'neutral' THEN 3.0
+        WHEN 'avoid' THEN 1.0
+      END), 2) as avgRating,
+      SUM(CASE WHEN rating = 'trusted' THEN 1 ELSE 0 END) as trustedCount,
+      SUM(CASE WHEN rating = 'neutral' THEN 1 ELSE 0 END) as neutralCount,
+      SUM(CASE WHEN rating = 'avoid' THEN 1 ELSE 0 END) as avoidCount
     FROM reviews
     WHERE reviewed_pubkey = ?
   `).get(reviewedPubkey);
@@ -168,7 +175,11 @@ export function getScoresForPubkeys(pubkeys) {
     SELECT
       reviewed_pubkey,
       COUNT(*) as count,
-      ROUND(AVG(CAST(rating AS REAL)), 2) as avgRating
+      ROUND(AVG(CASE rating
+        WHEN 'trusted' THEN 5.0
+        WHEN 'neutral' THEN 3.0
+        WHEN 'avoid' THEN 1.0
+      END), 2) as avgRating
     FROM reviews
     WHERE reviewed_pubkey IN (${placeholders})
     GROUP BY reviewed_pubkey
@@ -324,7 +335,11 @@ export function getLeaderboard(minReviews = 1, limit = 50) {
     SELECT
       reviewed_pubkey as pubkey,
       COUNT(*) as count,
-      ROUND(AVG(CAST(rating AS REAL)), 2) as avgRating
+      ROUND(AVG(CASE rating
+        WHEN 'trusted' THEN 5.0
+        WHEN 'neutral' THEN 3.0
+        WHEN 'avoid' THEN 1.0
+      END), 2) as avgRating
     FROM reviews
     GROUP BY reviewed_pubkey
     HAVING count >= ?
@@ -339,7 +354,11 @@ export function getLeaderboardSince(sinceTs, minReviews = 1, limit = 50) {
     SELECT
       reviewed_pubkey as pubkey,
       COUNT(*) as count,
-      ROUND(AVG(CAST(rating AS REAL)), 2) as avgRating
+      ROUND(AVG(CASE rating
+        WHEN 'trusted' THEN 5.0
+        WHEN 'neutral' THEN 3.0
+        WHEN 'avoid' THEN 1.0
+      END), 2) as avgRating
     FROM reviews
     WHERE created_at >= ?
     GROUP BY reviewed_pubkey

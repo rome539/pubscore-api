@@ -85,7 +85,7 @@ function hexToNpub(hex) {
 }
 
 // Valid tag keys
-const VALID_TAGS = ['trade', 'knowledge', 'helpful', 'funny', 'creative', 'warning'];
+const VALID_TAGS = ['trustworthy', 'knowledgeable', 'helpful', 'funny', 'creative', 'warning'];
 
 // ---------------------------------------------------------------------------
 // Routes
@@ -130,6 +130,11 @@ app.get('/reviews', (req, res) => {
     npub,
     avgRating: score.avgRating || 0,
     count: score.count || 0,
+    votes: {
+      trusted: score.trustedCount || 0,
+      neutral: score.neutralCount || 0,
+      avoid: score.avoidCount || 0
+    },
     limit,
     hasMore,
     nextCursor,
@@ -246,7 +251,12 @@ app.get('/score', (req, res) => {
   res.json({
     npub,
     avgRating: score.avgRating || 0,
-    count: score.count || 0
+    count: score.count || 0,
+    votes: {
+      trusted: score.trustedCount || 0,
+      neutral: score.neutralCount || 0,
+      avoid: score.avoidCount || 0
+    }
   });
 });
 
